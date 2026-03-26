@@ -26,6 +26,7 @@ from datetime import datetime
 from typing import Dict, Any, List
 from pathlib import Path
 
+import requests
 from flask import Flask, render_template, jsonify, request, send_file
 from flask_cors import CORS
 
@@ -597,8 +598,6 @@ def get_ai_status():
         ai_error = None
         model_count = 0
         try:
-            import requests
-
             response = requests.get(base_url.rstrip("/") + "/v1/models", timeout=5)
             if response.status_code == 200:
                 ai_ready = True
