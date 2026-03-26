@@ -1,4 +1,5 @@
+# Windows版本只需要pywin32（推荐）
 pywin32>=306
-msal>=1.24.0
-requests>=2.31.0
-python-dateutil>=2.8.2
+
+# 如需使用跨平台版本(不需要Outlook客户端)，请安装完整依赖:
+# pip install -r requirements_full.txt
