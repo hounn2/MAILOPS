@@ -118,6 +118,38 @@
           "target": "会议邀请"
         }
       ]
+    },
+    {
+      "id": "rule_005",
+      "name": "智能问答自动回复",
+      "enabled": false,
+      "conditions": {
+        "match_all": true,
+        "items": [
+          {
+            "field": "subject",
+            "operator": "contains",
+            "value": ["咨询", "问题", "价格", "发货", "退款", "发票"]
+          },
+          {
+            "field": "sender_domain",
+            "operator": "not_in",
+            "value": ["@company.com"]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "qa_reply",
+          "similarity_threshold": 0.6,
+          "include_original": false,
+          "subject": "RE: {original_subject}"
+        },
+        {
+          "type": "move",
+          "target": "智能回复"
+        }
+      ]
     }
   ],
   "templates": {
@@ -137,6 +169,7 @@
     "log_level": "INFO",
     "dry_run": false,
     "excluded_folders": ["已删除邮件", "草稿", "已发送邮件"],
-    "mark_as_read_after_process": true
+    "mark_as_read_after_process": true,
+    "qa_database_path": "qa_database.json"
   }
 }

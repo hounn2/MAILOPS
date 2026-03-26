@@ -519,14 +519,18 @@ class OutlookActions:
 class ActionExecutor:
     """操作执行器，负责执行匹配规则的动作"""
 
-    def __init__(self, outlook_actions: OutlookActions, template_engine):
+    def __init__(
+        self, outlook_actions: OutlookActions, template_engine, qa_engine=None
+    ):
         self.outlook = outlook_actions
         self.template_engine = template_engine
+        self.qa_engine = qa_engine
         self.action_handlers = {
             "reply": self._handle_reply,
             "forward": self._handle_forward,
             "move": self._handle_move,
             "mark_as_read": self._handle_mark_as_read,
+            "qa_reply": self._handle_qa_reply,
         }
 
     def execute_actions(
@@ -623,6 +627,76 @@ class ActionExecutor:
         """处理标记已读动作"""
         return self.outlook.mark_as_read(email_item)
 
+    def _handle_qa_reply(
+        self, email_item, action: Dict[str, Any], email_data: Dict[str, Any]
+    ) -> bool:
+        """处理智能问答回复动作"""
+        try:
+            if not self.qa_engine:
+                logger.error("问答引擎未初始化")
+                return False
+
+            # 获取邮件正文内容
+            email_body = email_data.get("body", "")
+            email_subject = email_data.get("subject", "")
+
+            # 组合主题和正文进行匹配（优先使用正文）
+            query_text = email_body if email_body else email_subject
+
+            if not query_text:
+                logger.warning("邮件内容为空，无法进行问答匹配")
+                return False
+
+            # 获取匹配参数
+            similarity_threshold = action.get("similarity_threshold")
+            include_original = action.get("include_original", False)
+            custom_subject = action.get("subject", "RE: {original_subject}")
+
+            logger.info(f"开始智能问答匹配，查询内容: {query_text[:100]}...")
+
+            # 查找最佳匹配
+            match = self.qa_engine.find_best_answer(query_text, similarity_threshold)
+
+            if match:
+                answer = match["answer"]
+                matched_question = match["matched_question"]
+                similarity = match["similarity"]
+
+                logger.info(
+                    f"匹配成功: '{matched_question}' (相似度: {similarity:.2%})"
+                )
+
+                # 构建回复主题
+                subject = custom_subject.format(
+                    original_subject=email_data.get("subject", "")
+                )
+
+                # 发送回复
+                return self.outlook.reply_email(
+                    email_item, subject, answer, include_original
+                )
+            else:
+                # 未匹配到问题，发送默认回复（如果配置）
+                if self.qa_engine.settings.get("include_unmatched_notice", True):
+                    fallback_answer = self.qa_engine.settings.get(
+                        "unmatched_notice",
+                        "您好！您的问题我已收到，我会尽快为您处理。",
+                    )
+                    subject = custom_subject.format(
+                        original_subject=email_data.get("subject", "")
+                    )
+                    logger.info("未匹配到问题，发送默认回复")
+                    return self.outlook.reply_email(
+                        email_item, subject, fallback_answer, include_original
+                    )
+                else:
+                    logger.info("未匹配到问题，不发送回复")
+                    return False
+
+        except Exception as e:
+            logger.error(f"智能问答回复失败: {e}")
+            return False
+
 
 # ============================================================================
 # 主程序
@@ -666,8 +740,22 @@ class OutlookAssistantWindows:
             dry_run = self.dry_run or settings.get("dry_run", False)
             self.outlook_actions = OutlookActions(dry_run=dry_run)
 
+            # 初始化问答引擎（如果问答库文件存在）
+            qa_engine = None
+            qa_database_path = settings.get("qa_database_path", "qa_database.json")
+            if os.path.exists(qa_database_path):
+                try:
+                    from qa_engine import QAEngine
+
+                    qa_engine = QAEngine(qa_database_path)
+                    logger.info(f"问答引擎初始化成功: {qa_database_path}")
+                except Exception as e:
+                    logger.warning(f"问答引擎初始化失败: {e}")
+            else:
+                logger.info(f"问答库文件不存在，跳过问答引擎初始化: {qa_database_path}")
+
             self.action_executor = ActionExecutor(
-                self.outlook_actions, self.template_engine
+                self.outlook_actions, self.template_engine, qa_engine
             )
 
             logger.info("所有引擎初始化成功")
