@@ -520,17 +520,23 @@ class ActionExecutor:
     """操作执行器，负责执行匹配规则的动作"""
 
     def __init__(
-        self, outlook_actions: OutlookActions, template_engine, qa_engine=None
+        self,
+        outlook_actions: OutlookActions,
+        template_engine,
+        qa_engine=None,
+        ai_engine=None,
     ):
         self.outlook = outlook_actions
         self.template_engine = template_engine
         self.qa_engine = qa_engine
+        self.ai_engine = ai_engine
         self.action_handlers = {
             "reply": self._handle_reply,
             "forward": self._handle_forward,
             "move": self._handle_move,
             "mark_as_read": self._handle_mark_as_read,
             "qa_reply": self._handle_qa_reply,
+            "ai_reply": self._handle_ai_reply,
         }
 
     def execute_actions(
@@ -697,6 +703,55 @@ class ActionExecutor:
             logger.error(f"智能问答回复失败: {e}")
             return False
 
+    def _handle_ai_reply(
+        self, email_item, action: Dict[str, Any], email_data: Dict[str, Any]
+    ) -> bool:
+        """处理AI智能回复动作"""
+        try:
+            if not self.ai_engine:
+                logger.error("AI引擎未初始化")
+                return False
+
+            # 检查AI引擎是否就绪
+            if not self.ai_engine.is_ready():
+                logger.error("AI引擎未就绪，请检查LMStudio是否正常运行")
+                return False
+
+            # 获取参数
+            use_knowledge_base = action.get("use_knowledge_base", True)
+            include_original = action.get("include_original", False)
+            custom_subject = action.get("subject", "RE: {original_subject}")
+            temperature = action.get("temperature", 0.7)
+
+            logger.info(
+                f"开始使用AI生成回复，邮件主题: {email_data.get('subject', '')}"
+            )
+
+            # 调用AI生成回复
+            reply_content = self.ai_engine.generate_reply(
+                email_data=email_data, search_knowledge=use_knowledge_base
+            )
+
+            if reply_content:
+                # 构建回复主题
+                subject = custom_subject.format(
+                    original_subject=email_data.get("subject", "")
+                )
+
+                logger.info("AI回复生成成功，正在发送...")
+
+                # 发送回复
+                return self.outlook.reply_email(
+                    email_item, subject, reply_content, include_original
+                )
+            else:
+                logger.error("AI生成回复失败")
+                return False
+
+        except Exception as e:
+            logger.error(f"AI智能回复失败: {e}")
+            return False
+
 
 # ============================================================================
 # 主程序
@@ -754,8 +809,41 @@ class OutlookAssistantWindows:
             else:
                 logger.info(f"问答库文件不存在，跳过问答引擎初始化: {qa_database_path}")
 
+            # 初始化知识库（如果启用）
+            knowledge_base = None
+            kb_config = self.config.get("knowledge_base", {})
+            if kb_config.get("enabled", False):
+                kb_path = kb_config.get("path", "knowledge_base")
+                if os.path.exists(kb_path):
+                    try:
+                        from knowledge_base import KnowledgeBase
+
+                        knowledge_base = KnowledgeBase(kb_path)
+                        logger.info(f"知识库初始化成功: {kb_path}")
+                    except Exception as e:
+                        logger.warning(f"知识库初始化失败: {e}")
+                else:
+                    logger.info(f"知识库路径不存在: {kb_path}")
+
+            # 初始化AI引擎（如果启用）
+            ai_engine = None
+            lmstudio_config = self.config.get("lmstudio", {})
+            if lmstudio_config.get("enabled", False):
+                try:
+                    from ai_engine import AIReplyEngine
+
+                    ai_engine = AIReplyEngine(lmstudio_config, knowledge_base)
+                    if ai_engine.is_ready():
+                        logger.info("AI引擎初始化成功")
+                    else:
+                        logger.warning("AI引擎初始化完成，但连接测试失败")
+                except Exception as e:
+                    logger.warning(f"AI引擎初始化失败: {e}")
+            else:
+                logger.info("AI引擎未启用")
+
             self.action_executor = ActionExecutor(
-                self.outlook_actions, self.template_engine, qa_engine
+                self.outlook_actions, self.template_engine, qa_engine, ai_engine
             )
 
             logger.info("所有引擎初始化成功")

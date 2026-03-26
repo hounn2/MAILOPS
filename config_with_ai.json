@@ -1,0 +1,221 @@
+{
+  "azure_ad": {
+    "client_id": "",
+    "tenant_id": "common",
+    "token_cache_path": "token_cache.json"
+  },
+  "lmstudio": {
+    "enabled": false,
+    "base_url": "http://localhost:1234",
+    "model": null,
+    "timeout": 60,
+    "system_prompt": "你是一个专业的客服助手。请根据客户邮件内容和提供的知识库信息，生成礼貌、专业、准确的回复。\\n\\n要求：\\n1. 使用中文回复\\n2. 语气友好、专业\\n3. 基于知识库信息回答，如果不确定就诚实说明\\n4. 不要编造信息\\n5. 适当使用换行和列表提高可读性"
+  },
+  "knowledge_base": {
+    "enabled": false,
+    "path": "knowledge_base",
+    "search_top_k": 3
+  },
+  "rules": [
+    {
+      "id": "rule_001",
+      "name": "垃圾邮件自动删除",
+      "enabled": true,
+      "conditions": {
+        "match_all": false,
+        "items": [
+          {
+            "field": "subject",
+            "operator": "contains",
+            "value": ["促销", "广告", "优惠", "免费领取"]
+          },
+          {
+            "field": "sender",
+            "operator": "not_in",
+            "value": ["boss@company.com", "hr@company.com"]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "move",
+          "target": "已删除邮件"
+        }
+      ]
+    },
+    {
+      "id": "rule_002",
+      "name": "紧急邮件转发给主管",
+      "enabled": true,
+      "conditions": {
+        "match_all": true,
+        "items": [
+          {
+            "field": "subject",
+            "operator": "contains",
+            "value": ["紧急", "urgent", "重要", "critical"]
+          },
+          {
+            "field": "body",
+            "operator": "contains",
+            "value": ["请立即处理", "需要回复", "deadline"]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "forward",
+          "to": ["manager@company.com"],
+          "subject_prefix": "[URGENT] "
+        },
+        {
+          "type": "move",
+          "target": "重要邮件"
+        }
+      ]
+    },
+    {
+      "id": "rule_003",
+      "name": "客户咨询自动回复",
+      "enabled": true,
+      "conditions": {
+        "match_all": true,
+        "items": [
+          {
+            "field": "subject",
+            "operator": "contains",
+            "value": ["咨询", "问题", "question", "support"]
+          },
+          {
+            "field": "sender_domain",
+            "operator": "not_in",
+            "value": ["@company.com"]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "reply",
+          "template": "auto_reply_customer",
+          "include_original": false
+        },
+        {
+          "type": "move",
+          "target": "客户咨询"
+        }
+      ]
+    },
+    {
+      "id": "rule_004",
+      "name": "内部会议邀请移动到日历",
+      "enabled": true,
+      "conditions": {
+        "match_all": true,
+        "items": [
+          {
+            "field": "subject",
+            "operator": "contains",
+            "value": ["会议邀请", "meeting invitation", "会议通知"]
+          },
+          {
+            "field": "sender_domain",
+            "operator": "in",
+            "value": ["@company.com"]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "move",
+          "target": "会议邀请"
+        }
+      ]
+    },
+    {
+      "id": "rule_005",
+      "name": "智能问答自动回复",
+      "enabled": false,
+      "conditions": {
+        "match_all": true,
+        "items": [
+          {
+            "field": "subject",
+            "operator": "contains",
+            "value": ["咨询", "问题", "价格", "发货", "退款", "发票"]
+          },
+          {
+            "field": "sender_domain",
+            "operator": "not_in",
+            "value": ["@company.com"]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "qa_reply",
+          "similarity_threshold": 0.6,
+          "include_original": false,
+          "subject": "RE: {original_subject}"
+        },
+        {
+          "type": "move",
+          "target": "智能回复"
+        }
+      ]
+    },
+    {
+      "id": "rule_006",
+      "name": "AI智能回复",
+      "enabled": false,
+      "description": "使用本地LMStudio AI根据知识库生成智能回复",
+      "conditions": {
+        "match_all": true,
+        "items": [
+          {
+            "field": "subject",
+            "operator": "contains",
+            "value": ["咨询", "问题", "技术支持", "帮助"]
+          },
+          {
+            "field": "sender_domain",
+            "operator": "not_in",
+            "value": ["@company.com"]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "ai_reply",
+          "use_knowledge_base": true,
+          "include_original": false,
+          "subject": "RE: {original_subject}",
+          "temperature": 0.7
+        },
+        {
+          "type": "move",
+          "target": "AI处理"
+        }
+      ]
+    }
+  ],
+  "templates": {
+    "auto_reply_customer": {
+      "subject": "RE: {original_subject}",
+      "body": "尊敬的客户，\\n\\n感谢您的来信。我们已收到您的咨询，我们的团队将尽快处理并在24小时内给您回复。\\n\\n如有紧急情况，请拨打我们的客服热线：400-xxx-xxxx\\n\\n此邮件为自动回复，请勿直接回复此邮件。\\n\\n祝好，\\n客服团队"
+    },
+    "auto_reply_out_of_office": {
+      "subject": "RE: {original_subject}",
+      "body": "您好，\\n\\n我目前不在办公室，无法及时回复您的邮件。\\n\\n预计返回时间：{return_date}\\n\\n如有紧急事务，请联系：{backup_contact}\\n\\n谢谢！"
+    }
+  },
+  "settings": {
+    "check_interval": 60,
+    "process_unread_only": true,
+    "max_emails_per_batch": 50,
+    "log_level": "INFO",
+    "dry_run": false,
+    "excluded_folders": ["已删除邮件", "草稿", "已发送邮件"],
+    "mark_as_read_after_process": true,
+    "qa_database_path": "qa_database.json"
+  }
+}
