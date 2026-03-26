@@ -580,26 +580,38 @@ def debug_db():
 def get_ai_status():
     """获取AI引擎状态"""
     try:
+        # 获取查询参数中的自定义配置
+        custom_base_url = request.args.get("base_url")
+
         config = load_config()
         lmstudio_config = config.get("lmstudio", {})
         kb_config = config.get("knowledge_base", {})
 
+        # 使用查询参数或配置文件中的地址
+        base_url = custom_base_url or lmstudio_config.get(
+            "base_url", "http://localhost:1234"
+        )
+
         # 测试LMStudio连接
         ai_ready = False
         ai_error = None
-        if lmstudio_config.get("enabled", False):
-            try:
-                from ai_engine import LMStudioEngine
+        model_count = 0
+        try:
+            import requests
 
-                engine = LMStudioEngine(
-                    base_url=lmstudio_config.get("base_url", "http://localhost:1234"),
-                    model=lmstudio_config.get("model"),
-                    timeout=5,  # 短时间测试连接
-                )
-                ai_ready = engine.is_available()
-                if not ai_ready:
-                    ai_error = "无法连接到LMStudio服务器，请确保LMStudio已启动"
-            except Exception as e:
+            response = requests.get(base_url.rstrip("/") + "/v1/models", timeout=5)
+            if response.status_code == 200:
+                ai_ready = True
+                data = response.json()
+                model_count = len(data.get("data", []))
+            else:
+                ai_error = f"HTTP {response.status_code}"
+        except Exception as e:
+            if "Connection" in str(type(e)):
+                ai_error = "无法连接到LMStudio服务器，请确保LMStudio已启动"
+            elif "Timeout" in str(type(e)):
+                ai_error = "连接超时"
+            else:
                 ai_error = str(e)
 
         # 检查知识库
@@ -625,6 +637,7 @@ def get_ai_status():
                     "ready": ai_ready,
                     "error": ai_error,
                     "config": lmstudio_config,
+                    "model_count": model_count if ai_ready else 0,
                 },
                 "knowledge_base": {
                     "enabled": kb_config.get("enabled", False),
@@ -731,12 +744,15 @@ def upload_kb_file():
             return jsonify({"success": False, "message": "没有文件"}), 400
 
         file = request.files["file"]
-        if file.filename == "":
+        if not file or not file.filename:
             return jsonify({"success": False, "message": "文件名为空"}), 400
+
+        # 获取文件名并安全检查
+        filename = str(file.filename)
 
         # 检查文件类型
         allowed_extensions = {".txt", ".md", ".pdf", ".docx", ".doc"}
-        ext = os.path.splitext(file.filename)[1].lower()
+        ext = os.path.splitext(filename)[1].lower()
         if ext not in allowed_extensions:
             return jsonify(
                 {"success": False, "message": f"不支持的文件类型: {ext}"}
@@ -749,10 +765,10 @@ def upload_kb_file():
         os.makedirs(kb_path, exist_ok=True)
 
         # 保存文件
-        file_path = os.path.join(kb_path, file.filename)
+        file_path = os.path.join(kb_path, filename)
         file.save(file_path)
 
-        return jsonify({"success": True, "message": f"文件上传成功: {file.filename}"})
+        return jsonify({"success": True, "message": f"文件上传成功: {filename}"})
 
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
@@ -762,9 +778,12 @@ def upload_kb_file():
 def delete_kb_file(filename):
     """删除知识库文件"""
     try:
+        if not filename:
+            return jsonify({"success": False, "message": "文件名不能为空"}), 400
+
         config = load_config()
         kb_config = config.get("knowledge_base", {})
-        kb_path = kb_config.get("path", "knowledge_base")
+        kb_path = str(kb_config.get("path", "knowledge_base"))
         file_path = os.path.join(kb_path, filename)
 
         # 安全检查：确保文件在知识库目录内

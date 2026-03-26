@@ -845,14 +845,18 @@ function testAIConnection() {
     btn.disabled = true;
     btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 测试中...';
     
-    fetch('/api/ai/status')
+    // 获取当前输入框中的配置
+    const baseUrl = document.getElementById('aiBaseUrl').value || 'http://localhost:1234';
+    
+    // 通过后端代理测试连接，避免跨域问题
+    fetch('/api/ai/status?base_url=' + encodeURIComponent(baseUrl))
         .then(response => response.json())
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '测试连接';
             
             if (data.success && data.ai.ready) {
-                showAlert('LMStudio连接正常！', 'success');
+                showAlert(`LMStudio连接成功！可用模型: ${data.ai.model_count}个`, 'success');
             } else {
                 showAlert('连接失败: ' + (data.ai.error || '请检查LMStudio是否运行'), 'danger');
             }
