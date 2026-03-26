@@ -126,13 +126,18 @@ class LMStudioEngine:
         if system_prompt is None:
             system_prompt = """你是一个专业的客服助手。请根据客户邮件内容和提供的知识库信息，生成礼貌、专业、准确的回复。
 
+重要提示：
+- 系统为你提供了多篇相关文档（标记为[文档1]、[文档2]等），请仔细阅读所有文档
+- 综合所有文档的信息来回答，不要只看第一篇文档
+- 如果不同文档中有互补信息，请整合在一起回答
+- 如果文档中没有相关信息，请诚实说明"需要进一步确认"
+
 要求：
 1. 使用中文回复
 2. 语气友好、专业
-3. 基于知识库信息回答，如果不确定就诚实说明
-4. 不要编造信息
-5. 适当使用换行和列表提高可读性
-6. 结尾可以询问是否还有其他问题"""
+3. 基于知识库信息回答，不要编造信息
+4. 适当使用换行和列表提高可读性
+5. 结尾可以询问是否还有其他问题"""
 
         # 构建提示词
         user_prompt = f"客户邮件内容：\n{email_content}\n"
@@ -206,14 +211,28 @@ class AIReplyEngine:
             relevant_docs = self.knowledge_base.search_relevant(search_query, top_k=3)
 
             if relevant_docs:
-                knowledge_context = "\n\n".join(
-                    [
-                        f"[文档{i + 1}]\n{doc['content'][:1000]}"
-                        for i, doc in enumerate(relevant_docs)
-                    ]
-                )
+                # 构建知识库上下文，明确标记每个文档
+                knowledge_parts = []
+                for i, doc in enumerate(relevant_docs):
+                    doc_header = (
+                        f"=== 文档{i + 1} (相似度: {doc.get('score', 0):.1%}) ==="
+                    )
+                    doc_content = doc["content"][:1000]
+                    knowledge_parts.append(f"{doc_header}\n{doc_content}")
+
+                knowledge_context = "\n\n".join(knowledge_parts)
+
                 logger.info(f"从知识库找到 {len(relevant_docs)} 篇相关文档")
-                logger.debug(f"知识库内容预览: {knowledge_context[:500]}...")
+                logger.info(
+                    f"文档相似度: "
+                    + ", ".join(
+                        [
+                            f"文档{i + 1}:{doc.get('score', 0):.1%}"
+                            for i, doc in enumerate(relevant_docs)
+                        ]
+                    )
+                )
+                logger.debug(f"知识库内容预览:\n{knowledge_context[:800]}...")
             else:
                 logger.warning("未从知识库找到相关文档")
         else:
