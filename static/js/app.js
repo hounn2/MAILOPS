@@ -1000,6 +1000,8 @@ showPage = function(page) {
         loadAIPage();
     } else if (page === 'kb-files') {
         loadKBFiles();
+    } else if (page === 'logs') {
+        loadLogs();
     }
     
     // 隐藏所有页面
