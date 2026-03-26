@@ -232,37 +232,68 @@ class OutlookActions:
             邮件数据字典
         """
         try:
-            # 获取发件人
+            # 安全地获取发件人信息
             sender = ""
-            if email_item.Sender:
-                sender = email_item.Sender.EmailAddress
+            try:
+                if email_item.Sender:
+                    # 尝试获取EmailAddress，如果不存在则尝试其他属性
+                    if hasattr(email_item.Sender, "EmailAddress"):
+                        sender = email_item.Sender.EmailAddress
+                    elif hasattr(email_item.Sender, "Address"):
+                        sender = email_item.Sender.Address
+                    elif hasattr(email_item.Sender, "Name"):
+                        sender = email_item.Sender.Name
+            except Exception as e:
+                logger.debug(f"获取发件人信息失败: {e}")
+                sender = ""
 
-            # 获取收件人
+            # 安全地获取收件人信息
             recipients = []
-            for recipient in email_item.Recipients:
-                recipients.append(recipient.Address)
+            try:
+                for recipient in email_item.Recipients:
+                    try:
+                        addr = (
+                            recipient.Address
+                            if hasattr(recipient, "Address")
+                            else str(recipient)
+                        )
+                        recipients.append(addr)
+                    except:
+                        pass
+            except Exception as e:
+                logger.debug(f"获取收件人信息失败: {e}")
 
-            # 获取附件信息
+            # 安全地获取附件信息
             attachments = []
-            for attachment in email_item.Attachments:
-                attachments.append(
-                    {"filename": attachment.FileName, "size": attachment.Size}
-                )
+            try:
+                for attachment in email_item.Attachments:
+                    try:
+                        filename = (
+                            attachment.FileName
+                            if hasattr(attachment, "FileName")
+                            else "unknown"
+                        )
+                        size = attachment.Size if hasattr(attachment, "Size") else 0
+                        attachments.append({"filename": filename, "size": size})
+                    except:
+                        pass
+            except Exception as e:
+                logger.debug(f"获取附件信息失败: {e}")
 
             return {
-                "entry_id": email_item.EntryID,
-                "subject": email_item.Subject,
-                "body": email_item.Body,
+                "entry_id": getattr(email_item, "EntryID", ""),
+                "subject": getattr(email_item, "Subject", ""),
+                "body": getattr(email_item, "Body", ""),
                 "html_body": getattr(email_item, "HTMLBody", ""),
                 "sender": sender,
                 "recipients": recipients,
-                "received_time": email_item.ReceivedTime,
-                "sent_time": email_item.SentOn,
-                "is_read": not email_item.UnRead,
-                "importance": email_item.Importance,
+                "received_time": getattr(email_item, "ReceivedTime", None),
+                "sent_time": getattr(email_item, "SentOn", None),
+                "is_read": not getattr(email_item, "UnRead", False),
+                "importance": getattr(email_item, "Importance", 1),
                 "attachments": attachments,
                 "conversation_id": getattr(email_item, "ConversationID", ""),
-                "message_class": email_item.MessageClass,
+                "message_class": getattr(email_item, "MessageClass", ""),
             }
 
         except Exception as e:
