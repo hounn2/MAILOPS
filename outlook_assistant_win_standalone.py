@@ -690,6 +690,7 @@ class OutlookAssistantWindows:
             "actions_executed": 0,
             "errors": 0,
             "start_time": datetime.now(),
+            "email_details": [],  # 添加邮件详情列表
         }
 
         try:
@@ -702,12 +703,24 @@ class OutlookAssistantWindows:
             logger.info(f"开始处理 {len(emails)} 封邮件...")
 
             for email_item in emails:
+                email_detail = {
+                    "subject": "",
+                    "sender": "",
+                    "matched_rules": [],
+                    "actions_taken": [],
+                    "status": "processed",
+                }
+
                 try:
                     email_data = self.outlook_actions.get_email_data(email_item)
 
                     if not email_data:
                         logger.warning("无法提取邮件数据，跳过")
                         continue
+
+                    # 记录邮件基本信息
+                    email_detail["subject"] = email_data.get("subject", "")
+                    email_detail["sender"] = email_data.get("sender", "")
 
                     stats["processed"] += 1
 
@@ -720,6 +733,7 @@ class OutlookAssistantWindows:
                         )
 
                         for rule in matched_rules:
+                            email_detail["matched_rules"].append(rule.get("name", ""))
                             actions = rule.get("actions", [])
                             if actions:
                                 result = self.action_executor.execute_actions(
@@ -727,13 +741,23 @@ class OutlookAssistantWindows:
                                 )
                                 stats["actions_executed"] += result["success"]
 
+                                # 记录执行的动作
+                                for action in result.get("actions", []):
+                                    if action.get("success"):
+                                        email_detail["actions_taken"].append(
+                                            action.get("type", "")
+                                        )
+
                     if mark_as_read and not email_data.get("is_read", False):
                         self.outlook_actions.mark_as_read(email_item)
 
                 except Exception as e:
                     logger.error(f"处理单封邮件时出错: {e}")
+                    email_detail["status"] = "error"
                     stats["errors"] += 1
-                    continue
+                finally:
+                    # 将邮件详情添加到列表
+                    stats["email_details"].append(email_detail)
 
             stats["end_time"] = datetime.now()
             stats["duration"] = (

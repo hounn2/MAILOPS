@@ -327,8 +327,14 @@ class OutlookAssistantCore:
             stats["status"] = "success"
             stats["message"] = "执行成功"
 
-            # 记录到数据库
-            self.db.add_execution_log(stats)
+            # 记录到数据库，获取log_id
+            log_id = self.db.add_execution_log(stats)
+
+            # 记录每封邮件的详情
+            if log_id:
+                email_details = stats.get("email_details", [])
+                for detail in email_details:
+                    self.db.add_email_detail(log_id, detail)
 
             return stats
 
