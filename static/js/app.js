@@ -725,6 +725,7 @@ function loadAIPage() {
                 // 更新AI引擎状态
                 document.getElementById('aiEnabled').checked = data.ai.enabled;
                 document.getElementById('aiBaseUrl').value = data.ai.config.base_url || 'http://localhost:1234';
+                document.getElementById('aiModel').value = data.ai.config.model || '';
                 document.getElementById('aiTimeout').value = data.ai.config.timeout || 60;
                 document.getElementById('aiSystemPrompt').value = data.ai.config.system_prompt || '';
                 
@@ -792,6 +793,7 @@ function saveAIConfig() {
             config.lmstudio = {
                 enabled: document.getElementById('aiEnabled').checked,
                 base_url: document.getElementById('aiBaseUrl').value,
+                model: document.getElementById('aiModel').value,
                 timeout: parseInt(document.getElementById('aiTimeout').value),
                 system_prompt: document.getElementById('aiSystemPrompt').value
             };
