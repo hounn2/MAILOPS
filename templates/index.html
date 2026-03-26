@@ -31,6 +31,9 @@
                     <a href="#" class="list-group-item list-group-item-action" data-page="rules">
                         <i class="bi bi-list-check"></i> 规则管理
                     </a>
+                    <a href="#" class="list-group-item list-group-item-action" data-page="ai">
+                        <i class="bi bi-robot"></i> AI智能回复
+                    </a>
                     <a href="#" class="list-group-item list-group-item-action" data-page="logs">
                         <i class="bi bi-clock-history"></i> 执行记录
                     </a>
@@ -218,6 +221,166 @@
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+
+                <!-- AI智能回复页面 -->
+                <div id="ai-page" class="page-content" style="display:none;">
+                    <h2><i class="bi bi-robot"></i> AI智能回复</h2>
+                    
+                    <!-- AI状态卡片 -->
+                    <div class="row mt-4">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <span><i class="bi bi-cpu"></i> LMStudio AI引擎</span>
+                                    <span id="aiStatusBadge" class="badge bg-secondary">未启用</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="aiEnabled" onchange="toggleAI()">
+                                        <label class="form-check-label" for="aiEnabled">启用AI智能回复</label>
+                                    </div>
+                                    
+                                    <div id="aiConfigSection" style="display:none;">
+                                        <div class="mb-3">
+                                            <label class="form-label">服务器地址</label>
+                                            <input type="text" class="form-control" id="aiBaseUrl" value="http://localhost:1234">
+                                            <div class="form-text">LMStudio服务器地址，默认http://localhost:1234</div>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label class="form-label">超时时间（秒）</label>
+                                            <input type="number" class="form-control" id="aiTimeout" value="60" min="10" max="300">
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label class="form-label">AI角色设定</label>
+                                            <textarea class="form-control" id="aiSystemPrompt" rows="6" placeholder="你是一个专业的客服助手..."></textarea>
+                                            <div class="form-text">定义AI的角色和回复风格</div>
+                                        </div>
+                                        
+                                        <button class="btn btn-primary" onclick="saveAIConfig()">保存AI配置</button>
+                                        <button class="btn btn-outline-secondary ms-2" onclick="testAIConnection()">测试连接</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <span><i class="bi bi-book"></i> 知识库</span>
+                                    <span id="kbStatusBadge" class="badge bg-secondary">未启用</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="kbEnabled" onchange="toggleKB()">
+                                        <label class="form-check-label" for="kbEnabled">启用知识库</label>
+                                    </div>
+                                    
+                                    <div id="kbConfigSection" style="display:none;">
+                                        <div class="mb-3">
+                                            <label class="form-label">知识库路径</label>
+                                            <input type="text" class="form-control" id="kbPath" value="knowledge_base">
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label class="form-label">搜索文档数</label>
+                                            <input type="number" class="form-control" id="kbTopK" value="3" min="1" max="10">
+                                            <div class="form-text">每次查询最多使用的相关文档数</div>
+                                        </div>
+                                        
+                                        <button class="btn btn-primary" onclick="saveKBConfig()">保存知识库配置</button>
+                                        <button class="btn btn-outline-info ms-2" onclick="showPage('kb-files')">管理文件</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- AI测试区域 -->
+                    <div class="card mt-4" id="aiTestSection" style="display:none;">
+                        <div class="card-header">
+                            <i class="bi bi-lightning"></i> AI测试
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-label">测试邮件内容</label>
+                                <textarea class="form-control" id="testEmailContent" rows="4" placeholder="请输入测试邮件内容，例如：请问产品价格是多少？"></textarea>
+                            </div>
+                            
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="testUseKB" checked>
+                                <label class="form-check-label">使用知识库</label>
+                            </div>
+                            
+                            <button class="btn btn-success" onclick="testAIGenerate()">
+                                <i class="bi bi-play-fill"></i> 生成回复
+                            </button>
+                            
+                            <div id="aiTestResult" class="mt-3" style="display:none;">
+                                <label class="form-label">AI生成的回复：</label>
+                                <div class="alert alert-light border" id="aiTestReply" style="white-space: pre-wrap;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 使用说明 -->
+                    <div class="alert alert-info mt-4">
+                        <h6><i class="bi bi-info-circle"></i> 使用说明</h6>
+                        <ol class="mb-0">
+                            <li>安装并启动LMStudio，下载模型并启动服务器</li>
+                            <li>启用AI功能并配置服务器地址</li>
+                            <li>准备知识库文件（txt、md、pdf等格式）</li>
+                            <li>在规则管理中添加"AI智能回复"规则</li>
+                            <li>使用测试功能验证AI回复效果</li>
+                        </ol>
+                    </div>
+                </div>
+                
+                <!-- 知识库文件管理页面 -->
+                <div id="kb-files-page" class="page-content" style="display:none;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h2><i class="bi bi-folder"></i> 知识库文件管理</h2>
+                        <button class="btn btn-outline-secondary" onclick="showPage('ai')">
+                            <i class="bi bi-arrow-left"></i> 返回AI设置
+                        </button>
+                    </div>
+                    
+                    <div class="card mt-3">
+                        <div class="card-header">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span>文件列表</span>
+                                <button class="btn btn-sm btn-primary" onclick="document.getElementById('kbFileInput').click()">
+                                    <i class="bi bi-upload"></i> 上传文件
+                                </button>
+                                <input type="file" id="kbFileInput" style="display:none" accept=".txt,.md,.pdf,.docx,.doc" onchange="uploadKBFile(this)">
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <table class="table" id="kbFilesTable">
+                                <thead>
+                                    <tr>
+                                        <th>文件名</th>
+                                        <th>大小</th>
+                                        <th>修改时间</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted">加载中...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-warning mt-3">
+                        <i class="bi bi-exclamation-triangle"></i> 
+                        支持的文件格式：.txt, .md, .pdf, .docx, .doc
+                        <br>建议将文档分段整理，每段聚焦一个主题，以提高AI回复质量。
                     </div>
                 </div>
 

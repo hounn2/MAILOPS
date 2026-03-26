@@ -572,6 +572,218 @@ def debug_db():
 
 
 # ============================================================================
+# AI功能相关API
+# ============================================================================
+
+
+@app.route("/api/ai/status", methods=["GET"])
+def get_ai_status():
+    """获取AI引擎状态"""
+    try:
+        config = load_config()
+        lmstudio_config = config.get("lmstudio", {})
+        kb_config = config.get("knowledge_base", {})
+
+        # 测试LMStudio连接
+        ai_ready = False
+        ai_error = None
+        if lmstudio_config.get("enabled", False):
+            try:
+                from ai_engine import LMStudioEngine
+
+                engine = LMStudioEngine(
+                    base_url=lmstudio_config.get("base_url", "http://localhost:1234"),
+                    model=lmstudio_config.get("model"),
+                    timeout=5,  # 短时间测试连接
+                )
+                ai_ready = engine.is_available()
+                if not ai_ready:
+                    ai_error = "无法连接到LMStudio服务器，请确保LMStudio已启动"
+            except Exception as e:
+                ai_error = str(e)
+
+        # 检查知识库
+        kb_ready = False
+        kb_stats = {"total_documents": 0, "sources": []}
+        if kb_config.get("enabled", False):
+            kb_path = kb_config.get("path", "knowledge_base")
+            if os.path.exists(kb_path):
+                try:
+                    from knowledge_base import KnowledgeBase
+
+                    kb = KnowledgeBase(kb_path)
+                    kb_stats = kb.get_stats()
+                    kb_ready = True
+                except Exception as e:
+                    kb_stats["error"] = str(e)
+
+        return jsonify(
+            {
+                "success": True,
+                "ai": {
+                    "enabled": lmstudio_config.get("enabled", False),
+                    "ready": ai_ready,
+                    "error": ai_error,
+                    "config": lmstudio_config,
+                },
+                "knowledge_base": {
+                    "enabled": kb_config.get("enabled", False),
+                    "ready": kb_ready,
+                    "stats": kb_stats,
+                    "config": kb_config,
+                },
+            }
+        )
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/api/ai/test", methods=["POST"])
+def test_ai():
+    """测试AI生成功能"""
+    try:
+        data = request.json
+        test_email = data.get("email_content", "")
+        use_kb = data.get("use_knowledge_base", True)
+
+        config = load_config()
+        lmstudio_config = config.get("lmstudio", {})
+        kb_config = config.get("knowledge_base", {})
+
+        if not lmstudio_config.get("enabled", False):
+            return jsonify({"success": False, "message": "AI功能未启用"}), 400
+
+        # 初始化AI引擎
+        from ai_engine import AIReplyEngine
+
+        knowledge_base = None
+        if use_kb and kb_config.get("enabled", False):
+            from knowledge_base import KnowledgeBase
+
+            kb_path = kb_config.get("path", "knowledge_base")
+            if os.path.exists(kb_path):
+                knowledge_base = KnowledgeBase(kb_path)
+
+        ai_engine = AIReplyEngine(lmstudio_config, knowledge_base)
+
+        if not ai_engine.is_ready():
+            return jsonify(
+                {
+                    "success": False,
+                    "message": "AI引擎未就绪，请检查LMStudio是否正常运行",
+                }
+            ), 500
+
+        # 模拟邮件数据
+        email_data = {
+            "subject": "测试邮件",
+            "body": test_email,
+            "sender": "test@example.com",
+        }
+
+        # 生成回复
+        reply = ai_engine.generate_reply(email_data, search_knowledge=use_kb)
+
+        if reply:
+            return jsonify({"success": True, "reply": reply})
+        else:
+            return jsonify({"success": False, "message": "生成回复失败"}), 500
+
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/api/kb/files", methods=["GET"])
+def get_kb_files():
+    """获取知识库文件列表"""
+    try:
+        config = load_config()
+        kb_config = config.get("knowledge_base", {})
+        kb_path = kb_config.get("path", "knowledge_base")
+
+        files = []
+        if os.path.exists(kb_path):
+            for root, dirs, filenames in os.walk(kb_path):
+                for filename in filenames:
+                    file_path = os.path.join(root, filename)
+                    rel_path = os.path.relpath(file_path, kb_path)
+                    files.append(
+                        {
+                            "name": filename,
+                            "path": rel_path,
+                            "size": os.path.getsize(file_path),
+                            "modified": datetime.fromtimestamp(
+                                os.path.getmtime(file_path)
+                            ).isoformat(),
+                        }
+                    )
+
+        return jsonify({"success": True, "files": files})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/api/kb/upload", methods=["POST"])
+def upload_kb_file():
+    """上传知识库文件"""
+    try:
+        if "file" not in request.files:
+            return jsonify({"success": False, "message": "没有文件"}), 400
+
+        file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"success": False, "message": "文件名为空"}), 400
+
+        # 检查文件类型
+        allowed_extensions = {".txt", ".md", ".pdf", ".docx", ".doc"}
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in allowed_extensions:
+            return jsonify(
+                {"success": False, "message": f"不支持的文件类型: {ext}"}
+            ), 400
+
+        # 确保知识库目录存在
+        config = load_config()
+        kb_config = config.get("knowledge_base", {})
+        kb_path = kb_config.get("path", "knowledge_base")
+        os.makedirs(kb_path, exist_ok=True)
+
+        # 保存文件
+        file_path = os.path.join(kb_path, file.filename)
+        file.save(file_path)
+
+        return jsonify({"success": True, "message": f"文件上传成功: {file.filename}"})
+
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/api/kb/delete/<path:filename>", methods=["DELETE"])
+def delete_kb_file(filename):
+    """删除知识库文件"""
+    try:
+        config = load_config()
+        kb_config = config.get("knowledge_base", {})
+        kb_path = kb_config.get("path", "knowledge_base")
+        file_path = os.path.join(kb_path, filename)
+
+        # 安全检查：确保文件在知识库目录内
+        real_path = os.path.realpath(file_path)
+        real_kb_path = os.path.realpath(kb_path)
+        if not real_path.startswith(real_kb_path):
+            return jsonify({"success": False, "message": "无效的文件路径"}), 400
+
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            return jsonify({"success": True, "message": f"文件已删除: {filename}"})
+        else:
+            return jsonify({"success": False, "message": "文件不存在"}), 404
+
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+# ============================================================================
 # 主程序
 # ============================================================================
 

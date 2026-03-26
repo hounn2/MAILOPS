@@ -204,7 +204,8 @@ function getActionName(action) {
         'reply': `回复邮件${action.template ? ' (使用模板: ' + action.template + ')' : ''}`,
         'forward': `转发给 ${action.to ? action.to.join(', ') : ''}`,
         'move': `移动到 "${action.target}"`,
-        'mark_as_read': '标记为已读'
+        'mark_as_read': '标记为已读',
+        'ai_reply': '🤖 AI智能回复' + (action.use_knowledge_base !== false ? ' (使用知识库)' : '')
     };
     return names[action.type] || action.type;
 }
@@ -296,6 +297,7 @@ function addAction(data = null) {
                     <option value="forward" ${data?.type === 'forward' ? 'selected' : ''}>转发邮件</option>
                     <option value="move" ${data?.type === 'move' ? 'selected' : ''}>移动邮件</option>
                     <option value="mark_as_read" ${data?.type === 'mark_as_read' ? 'selected' : ''}>标记为已读</option>
+                    <option value="ai_reply" ${data?.type === 'ai_reply' ? 'selected' : ''}>🤖 AI智能回复</option>
                 </select>
             </div>
             <div class="col-md-8 action-fields">
@@ -340,6 +342,19 @@ function getActionFields(data) {
             return `
                 <input type="text" class="form-control action-target" placeholder="目标文件夹名称" value="${data.target || ''}">
             `;
+        case 'ai_reply':
+            return `
+                <div class="form-check mb-2">
+                    <input class="form-check-input action-use-kb" type="checkbox" ${data.use_knowledge_base !== false ? 'checked' : ''}>
+                    <label class="form-check-label">使用知识库</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input action-include-original" type="checkbox" ${data.include_original ? 'checked' : ''}>
+                    <label class="form-check-label">包含原始邮件</label>
+                </div>
+                <input type="text" class="form-control action-subject mb-2" placeholder="回复主题模板" value="${data.subject || 'RE: {original_subject}'}">
+                <input type="number" class="form-control action-temperature" placeholder="温度参数(0-1)" value="${data.temperature || 0.7}" min="0" max="1" step="0.1">
+            `;
         default:
             return '';
     }
@@ -373,6 +388,20 @@ function updateActionFields(select) {
             break;
         case 'mark_as_read':
             fieldsDiv.innerHTML = '<span class="text-muted">无需额外配置</span>';
+            break;
+        case 'ai_reply':
+            fieldsDiv.innerHTML = `
+                <div class="form-check mb-2">
+                    <input class="form-check-input action-use-kb" type="checkbox" checked>
+                    <label class="form-check-label">使用知识库</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input action-include-original" type="checkbox">
+                    <label class="form-check-label">包含原始邮件</label>
+                </div>
+                <input type="text" class="form-control action-subject mb-2" placeholder="回复主题模板" value="RE: {original_subject}">
+                <input type="number" class="form-control action-temperature" placeholder="温度参数(0-1)" value="0.7" min="0" max="1" step="0.1">
+            `;
             break;
     }
 }
@@ -426,8 +455,18 @@ function saveRule() {
                 const target = row.querySelector('.action-target')?.value;
                 if (target) action.target = target;
                 break;
+            case 'ai_reply':
+                const useKB = row.querySelector('.action-use-kb')?.checked;
+                const includeOrig = row.querySelector('.action-include-original')?.checked;
+                const subjectTpl = row.querySelector('.action-subject')?.value;
+                const temperature = row.querySelector('.action-temperature')?.value;
+                action.use_knowledge_base = useKB !== false;
+                if (includeOrig) action.include_original = true;
+                if (subjectTpl) action.subject = subjectTpl;
+                if (temperature) action.temperature = parseFloat(temperature);
+                break;
         }
-        
+
         rule.actions.push(action);
     });
     
@@ -674,3 +713,301 @@ function showAlert(message, type) {
         div.remove();
     }, 5000);
 }
+
+// ==================== AI功能 ====================
+
+function loadAIPage() {
+    // 加载AI状态
+    fetch('/api/ai/status')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // 更新AI引擎状态
+                document.getElementById('aiEnabled').checked = data.ai.enabled;
+                document.getElementById('aiBaseUrl').value = data.ai.config.base_url || 'http://localhost:1234';
+                document.getElementById('aiTimeout').value = data.ai.config.timeout || 60;
+                document.getElementById('aiSystemPrompt').value = data.ai.config.system_prompt || '';
+                
+                const aiBadge = document.getElementById('aiStatusBadge');
+                if (data.ai.enabled) {
+                    if (data.ai.ready) {
+                        aiBadge.className = 'badge bg-success';
+                        aiBadge.textContent = '运行中';
+                    } else {
+                        aiBadge.className = 'badge bg-warning';
+                        aiBadge.textContent = data.ai.error || '未连接';
+                    }
+                } else {
+                    aiBadge.className = 'badge bg-secondary';
+                    aiBadge.textContent = '未启用';
+                }
+                
+                toggleAI();
+                
+                // 更新知识库状态
+                document.getElementById('kbEnabled').checked = data.knowledge_base.enabled;
+                document.getElementById('kbPath').value = data.knowledge_base.config.path || 'knowledge_base';
+                document.getElementById('kbTopK').value = data.knowledge_base.config.search_top_k || 3;
+                
+                const kbBadge = document.getElementById('kbStatusBadge');
+                if (data.knowledge_base.enabled) {
+                    if (data.knowledge_base.ready) {
+                        kbBadge.className = 'badge bg-success';
+                        kbBadge.textContent = `${data.knowledge_base.stats.total_documents} 个文档`;
+                    } else {
+                        kbBadge.className = 'badge bg-warning';
+                        kbBadge.textContent = '未就绪';
+                    }
+                } else {
+                    kbBadge.className = 'badge bg-secondary';
+                    kbBadge.textContent = '未启用';
+                }
+                
+                toggleKB();
+                
+                // 显示测试区域
+                if (data.ai.enabled && data.ai.ready) {
+                    document.getElementById('aiTestSection').style.display = 'block';
+                } else {
+                    document.getElementById('aiTestSection').style.display = 'none';
+                }
+            }
+        });
+}
+
+function toggleAI() {
+    const enabled = document.getElementById('aiEnabled').checked;
+    document.getElementById('aiConfigSection').style.display = enabled ? 'block' : 'none';
+}
+
+function toggleKB() {
+    const enabled = document.getElementById('kbEnabled').checked;
+    document.getElementById('kbConfigSection').style.display = enabled ? 'block' : 'none';
+}
+
+function saveAIConfig() {
+    fetch('/api/config')
+        .then(response => response.json())
+        .then(config => {
+            config.lmstudio = {
+                enabled: document.getElementById('aiEnabled').checked,
+                base_url: document.getElementById('aiBaseUrl').value,
+                timeout: parseInt(document.getElementById('aiTimeout').value),
+                system_prompt: document.getElementById('aiSystemPrompt').value
+            };
+            
+            return fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            });
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('AI配置已保存', 'success');
+                loadAIPage();
+            } else {
+                showAlert('保存失败: ' + data.message, 'danger');
+            }
+        });
+}
+
+function saveKBConfig() {
+    fetch('/api/config')
+        .then(response => response.json())
+        .then(config => {
+            config.knowledge_base = {
+                enabled: document.getElementById('kbEnabled').checked,
+                path: document.getElementById('kbPath').value,
+                search_top_k: parseInt(document.getElementById('kbTopK').value)
+            };
+            
+            return fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            });
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('知识库配置已保存', 'success');
+                loadAIPage();
+            } else {
+                showAlert('保存失败: ' + data.message, 'danger');
+            }
+        });
+}
+
+function testAIConnection() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 测试中...';
+    
+    fetch('/api/ai/status')
+        .then(response => response.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '测试连接';
+            
+            if (data.success && data.ai.ready) {
+                showAlert('LMStudio连接正常！', 'success');
+            } else {
+                showAlert('连接失败: ' + (data.ai.error || '请检查LMStudio是否运行'), 'danger');
+            }
+        })
+        .catch(error => {
+            btn.disabled = false;
+            btn.innerHTML = '测试连接';
+            showAlert('测试失败: ' + error, 'danger');
+        });
+}
+
+function testAIGenerate() {
+    const content = document.getElementById('testEmailContent').value;
+    if (!content.trim()) {
+        showAlert('请输入测试内容', 'warning');
+        return;
+    }
+    
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> 生成中...';
+    
+    fetch('/api/ai/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            email_content: content,
+            use_knowledge_base: document.getElementById('testUseKB').checked
+        })
+    })
+        .then(response => response.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-play-fill"></i> 生成回复';
+            
+            const resultDiv = document.getElementById('aiTestResult');
+            const replyDiv = document.getElementById('aiTestReply');
+            
+            if (data.success) {
+                replyDiv.textContent = data.reply;
+                resultDiv.style.display = 'block';
+            } else {
+                showAlert('生成失败: ' + data.message, 'danger');
+            }
+        })
+        .catch(error => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-play-fill"></i> 生成回复';
+            showAlert('请求失败: ' + error, 'danger');
+        });
+}
+
+// ==================== 知识库文件管理 ====================
+
+function loadKBFiles() {
+    fetch('/api/kb/files')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const tbody = document.querySelector('#kbFilesTable tbody');
+                if (data.files.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">暂无文件</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = data.files.map(file => `
+                    <tr>
+                        <td>${file.name}</td>
+                        <td>${formatFileSize(file.size)}</td>
+                        <td>${formatDateTime(file.modified)}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteKBFile('${file.name}')">
+                                <i class="bi bi-trash"></i> 删除
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        });
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function uploadKBFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    fetch('/api/kb/upload', {
+        method: 'POST',
+        body: formData
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert(data.message, 'success');
+                loadKBFiles();
+            } else {
+                showAlert(data.message, 'danger');
+            }
+        })
+        .catch(error => {
+            showAlert('上传失败: ' + error, 'danger');
+        });
+    
+    // 清空input以便可以重复选择同一文件
+    input.value = '';
+}
+
+function deleteKBFile(filename) {
+    if (!confirm(`确定要删除文件 "${filename}" 吗？`)) return;
+    
+    fetch(`/api/kb/delete/${encodeURIComponent(filename)}`, {
+        method: 'DELETE'
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert(data.message, 'success');
+                loadKBFiles();
+            } else {
+                showAlert(data.message, 'danger');
+            }
+        });
+}
+
+// 更新页面加载逻辑
+const originalShowPage = showPage;
+showPage = function(page) {
+    if (page === 'ai') {
+        loadAIPage();
+    } else if (page === 'kb-files') {
+        loadKBFiles();
+    }
+    
+    // 隐藏所有页面
+    document.querySelectorAll('.page-content').forEach(el => {
+        el.style.display = 'none';
+    });
+    
+    // 显示目标页面
+    document.getElementById(page + '-page').style.display = 'block';
+    
+    // 更新菜单激活状态
+    document.querySelectorAll('.list-group-item').forEach(el => {
+        el.classList.remove('active');
+    });
+    const menuItem = document.querySelector(`[data-page="${page}"]`);
+    if (menuItem) menuItem.classList.add('active');
+};
