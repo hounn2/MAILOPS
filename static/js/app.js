@@ -509,41 +509,64 @@ function loadLogs() {
 }
 
 function showLogDetail(logId) {
+    console.log('Loading details for log ID:', logId);
     fetch(`/api/logs/${logId}/details`)
         .then(response => response.json())
         .then(data => {
-            if (data.success) {
-                const content = document.getElementById('logDetailContent');
-                if (data.details.length === 0) {
-                    content.innerHTML = '<p class="text-muted">暂无详细记录</p>';
-                } else {
-                    content.innerHTML = `
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>邮件主题</th>
-                                    <th>发件人</th>
-                                    <th>匹配规则</th>
-                                    <th>执行动作</th>
-                                    <th>状态</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${data.details.map(d => `
-                                    <tr>
-                                        <td>${d.email_subject}</td>
-                                        <td>${d.sender}</td>
-                                        <td>${JSON.parse(d.matched_rules || '[]').join(', ')}</td>
-                                        <td>${JSON.parse(d.actions_taken || '[]').join(', ')}</td>
-                                        <td><span class="badge bg-secondary">${d.status}</span></td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    `;
-                }
+            console.log('API Response:', data);
+            const content = document.getElementById('logDetailContent');
+            if (!data.success) {
+                content.innerHTML = `<p class="text-danger">加载失败: ${data.message}</p>`;
                 logDetailModal.show();
+                return;
             }
+            
+            if (!data.details || data.details.length === 0) {
+                content.innerHTML = '<p class="text-muted">暂无详细记录</p>';
+            } else {
+                content.innerHTML = `
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>邮件主题</th>
+                                <th>发件人</th>
+                                <th>匹配规则</th>
+                                <th>执行动作</th>
+                                <th>状态</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.details.map(d => {
+                                // 安全地解析JSON
+                                let matchedRules = [];
+                                let actionsTaken = [];
+                                try {
+                                    matchedRules = JSON.parse(d.matched_rules || '[]');
+                                } catch(e) { matchedRules = []; }
+                                try {
+                                    actionsTaken = JSON.parse(d.actions_taken || '[]');
+                                } catch(e) { actionsTaken = []; }
+                                
+                                return `
+                                    <tr>
+                                        <td>${d.email_subject || '-'}</td>
+                                        <td>${d.sender || '-'}</td>
+                                        <td>${matchedRules.join(', ') || '-'}</td>
+                                        <td>${actionsTaken.join(', ') || '-'}</td>
+                                        <td><span class="badge bg-secondary">${d.status || 'unknown'}</span></td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                `;
+            }
+            logDetailModal.show();
+        })
+        .catch(error => {
+            console.error('Error loading details:', error);
+            document.getElementById('logDetailContent').innerHTML = `<p class="text-danger">加载失败: ${error}</p>`;
+            logDetailModal.show();
         });
 }
 

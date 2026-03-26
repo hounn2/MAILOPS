@@ -537,6 +537,40 @@ def get_status():
     )
 
 
+@app.route("/api/debug/db", methods=["GET"])
+def debug_db():
+    """调试API - 查看数据库内容"""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # 获取最近的5条执行记录
+        cursor.execute("SELECT * FROM execution_logs ORDER BY id DESC LIMIT 5")
+        logs = [dict(row) for row in cursor.fetchall()]
+
+        # 获取所有邮件详情
+        cursor.execute("SELECT * FROM email_details ORDER BY id DESC LIMIT 10")
+        details = [dict(row) for row in cursor.fetchall()]
+
+        # 获取表结构
+        cursor.execute("PRAGMA table_info(email_details)")
+        schema = [dict(row) for row in cursor.fetchall()]
+
+        conn.close()
+
+        return jsonify(
+            {
+                "success": True,
+                "recent_logs": logs,
+                "recent_details": details,
+                "schema": schema,
+            }
+        )
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 # ============================================================================
 # 主程序
 # ============================================================================
