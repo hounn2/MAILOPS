@@ -219,36 +219,56 @@ class KnowledgeBase:
         # 转为小写
         return text.lower()
 
-    def search_relevant(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
+    def search_relevant(
+        self, query: str, top_k: int = 3, min_score: float = 0.01
+    ) -> List[Dict[str, Any]]:
         """
         搜索相关的知识库文档
 
         Args:
             query: 查询文本
             top_k: 返回的最相关文档数量
+            min_score: 最低相似度阈值（默认0.01，几乎不限制）
 
         Returns:
             相关文档列表
         """
         if not self.documents:
+            logger.warning("知识库为空，无法搜索")
             return []
+
+        logger.info(
+            f"开始搜索知识库，查询: '{query[:100]}...', 总文档数: {len(self.documents)}"
+        )
 
         # 计算每个文档与查询的相似度
         scored_docs = []
         for doc in self.documents:
             similarity = self._calculate_similarity(query, doc["content"])
-            scored_docs.append({**doc, "score": similarity})
+            if similarity > 0:  # 只要有点相似就记录
+                scored_docs.append({**doc, "score": similarity})
+                logger.debug(f"文档相似度: {similarity:.2%} - {doc['id'][:50]}...")
+
+        if not scored_docs:
+            logger.warning("所有文档相似度都为0，可能查询和文档完全不相关")
+            return []
 
         # 按相似度排序
         scored_docs.sort(key=lambda x: x["score"], reverse=True)
 
+        logger.info(f"相似度最高的5个文档:")
+        for i, doc in enumerate(scored_docs[:5]):
+            logger.info(f"  {i + 1}. {doc['id'][:60]}... - 相似度: {doc['score']:.2%}")
+
         # 返回前K个，过滤掉相似度过低的
-        relevant = [doc for doc in scored_docs[:top_k] if doc["score"] > 0.1]
+        relevant = [doc for doc in scored_docs[:top_k] if doc["score"] > min_score]
 
         if relevant:
-            logger.info(f"找到 {len(relevant)} 篇相关文档")
-            for doc in relevant:
-                logger.debug(f"  - {doc['id']}: {doc['score']:.2%}")
+            logger.info(f"找到 {len(relevant)} 篇相关文档（阈值>{min_score:.2%}）")
+        else:
+            logger.warning(
+                f"未找到相似度>{min_score:.2%}的文档，但最高相似度为: {scored_docs[0]['score']:.2%}"
+            )
 
         return relevant
 
