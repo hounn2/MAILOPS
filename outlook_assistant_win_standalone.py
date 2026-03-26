@@ -812,18 +812,34 @@ class OutlookAssistantWindows:
             # 初始化知识库（如果启用）
             knowledge_base = None
             kb_config = self.config.get("knowledge_base", {})
+            logger.info(
+                f"知识库配置: enabled={kb_config.get('enabled', False)}, path={kb_config.get('path', 'knowledge_base')}"
+            )
+
             if kb_config.get("enabled", False):
                 kb_path = kb_config.get("path", "knowledge_base")
+                kb_path_full = os.path.abspath(kb_path)
+                logger.info(f"尝试加载知识库: {kb_path_full}")
+
                 if os.path.exists(kb_path):
                     try:
                         from knowledge_base import KnowledgeBase
 
                         knowledge_base = KnowledgeBase(kb_path)
-                        logger.info(f"知识库初始化成功: {kb_path}")
+                        stats = knowledge_base.get_stats()
+                        logger.info(
+                            f"知识库初始化成功: {kb_path}, 文档数: {stats.get('total_documents', 0)}"
+                        )
                     except Exception as e:
-                        logger.warning(f"知识库初始化失败: {e}")
+                        logger.error(f"知识库初始化失败: {e}", exc_info=True)
                 else:
-                    logger.info(f"知识库路径不存在: {kb_path}")
+                    logger.error(f"知识库路径不存在: {kb_path_full}")
+                    # 尝试创建目录
+                    try:
+                        os.makedirs(kb_path, exist_ok=True)
+                        logger.info(f"已创建知识库目录: {kb_path_full}")
+                    except Exception as e2:
+                        logger.error(f"创建知识库目录失败: {e2}")
 
             # 初始化AI引擎（如果启用）
             ai_engine = None

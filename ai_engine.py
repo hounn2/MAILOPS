@@ -192,11 +192,17 @@ class AIReplyEngine:
 
         # 获取知识库上下文
         knowledge_context = ""
+        logger.info(
+            f"知识库搜索: search_knowledge={search_knowledge}, knowledge_base={self.knowledge_base is not None}"
+        )
+
         if search_knowledge and self.knowledge_base:
             # 从知识库搜索相关内容
             search_query = (
                 email_data.get("subject", "") + " " + email_data.get("body", "")[:200]
             )
+            logger.info(f"正在搜索知识库，查询: {search_query[:100]}...")
+
             relevant_docs = self.knowledge_base.search_relevant(search_query, top_k=3)
 
             if relevant_docs:
@@ -207,6 +213,14 @@ class AIReplyEngine:
                     ]
                 )
                 logger.info(f"从知识库找到 {len(relevant_docs)} 篇相关文档")
+                logger.debug(f"知识库内容预览: {knowledge_context[:500]}...")
+            else:
+                logger.warning("未从知识库找到相关文档")
+        else:
+            if not search_knowledge:
+                logger.info("知识库搜索被禁用 (search_knowledge=False)")
+            if not self.knowledge_base:
+                logger.warning("知识库未初始化 (knowledge_base=None)")
 
         # 调用AI生成回复
         return self.lmstudio.generate_email_reply(

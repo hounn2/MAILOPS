@@ -669,12 +669,28 @@ def test_ai():
         from ai_engine import AIReplyEngine
 
         knowledge_base = None
+        logger.info(
+            f"API测试 - 知识库配置: use_kb={use_kb}, kb_enabled={kb_config.get('enabled', False)}"
+        )
+
         if use_kb and kb_config.get("enabled", False):
             from knowledge_base import KnowledgeBase
 
             kb_path = kb_config.get("path", "knowledge_base")
+            kb_path_full = os.path.abspath(kb_path)
+            logger.info(f"API测试 - 尝试加载知识库: {kb_path_full}")
+
             if os.path.exists(kb_path):
-                knowledge_base = KnowledgeBase(kb_path)
+                try:
+                    knowledge_base = KnowledgeBase(kb_path)
+                    stats = knowledge_base.get_stats()
+                    logger.info(
+                        f"API测试 - 知识库加载成功，文档数: {stats.get('total_documents', 0)}"
+                    )
+                except Exception as e:
+                    logger.error(f"API测试 - 知识库加载失败: {e}")
+            else:
+                logger.error(f"API测试 - 知识库路径不存在: {kb_path_full}")
 
         ai_engine = AIReplyEngine(lmstudio_config, knowledge_base)
 
