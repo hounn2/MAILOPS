@@ -248,6 +248,13 @@ class OutlookActions:
         """连接到Outlook应用"""
         try:
             import win32com.client
+            import pythoncom
+
+            # 初始化COM线程（解决多线程或Flask中的COM初始化问题）
+            try:
+                pythoncom.CoInitialize()
+            except:
+                pass  # 可能已经初始化过
 
             self.outlook = win32com.client.Dispatch("Outlook.Application")
             self.namespace = self.outlook.GetNamespace("MAPI")

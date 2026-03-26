@@ -5,6 +5,7 @@
 
 import logging
 import win32com.client
+import pythoncom
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -23,6 +24,14 @@ class OutlookActions:
     def _connect(self):
         """连接到Outlook应用"""
         try:
+            import pythoncom
+
+            # 初始化COM线程（解决多线程或Flask中的COM初始化问题）
+            try:
+                pythoncom.CoInitialize()
+            except:
+                pass  # 可能已经初始化过
+
             self.outlook = win32com.client.Dispatch("Outlook.Application")
             self.namespace = self.outlook.GetNamespace("MAPI")
             logger.info("成功连接到Outlook")

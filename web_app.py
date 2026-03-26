@@ -297,7 +297,15 @@ class OutlookAssistantCore:
 
     def process_once(self) -> Dict[str, Any]:
         """执行一次邮件处理"""
+        import pythoncom
+
         try:
+            # 初始化COM（解决后台线程中的COM初始化问题）
+            try:
+                pythoncom.CoInitialize()
+            except:
+                pass  # 可能已经初始化过
+
             # 导入standalone版本的代码
             import importlib.util
 
@@ -337,6 +345,12 @@ class OutlookAssistantCore:
             }
             self.db.add_execution_log(error_stats)
             return error_stats
+        finally:
+            # 释放COM
+            try:
+                pythoncom.CoUninitialize()
+            except:
+                pass
 
 
 # ============================================================================
