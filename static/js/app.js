@@ -1057,6 +1057,10 @@ showPage = function(page) {
         loadKBFiles();
     } else if (page === 'logs') {
         loadLogs();
+    } else if (page === 'rules') {
+        loadRules();
+    } else if (page === 'settings') {
+        loadSettings();
     }
     
     // 隐藏所有页面
