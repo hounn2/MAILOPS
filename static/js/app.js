@@ -621,6 +621,60 @@ function loadSettings() {
             document.getElementById('maxEmailsPerBatch').value = settings.max_emails_per_batch || 50;
             document.getElementById('markAsRead').checked = settings.mark_as_read_after_process === true;
         });
+    
+    // 加载自动执行状态
+    loadAutoExecutionStatus();
+}
+
+function loadAutoExecutionStatus() {
+    fetch('/api/auto_execution')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const checkbox = document.getElementById('autoExecutionEnabled');
+                const statusDiv = document.getElementById('autoExecutionStatus');
+                const statusText = document.getElementById('autoExecutionText');
+                
+                checkbox.checked = data.enabled;
+                
+                if (data.enabled && data.running) {
+                    statusDiv.style.display = 'block';
+                    statusDiv.className = 'alert alert-success';
+                    statusText.textContent = `自动执行运行中（每${data.interval}秒检查一次）`;
+                } else if (data.enabled && !data.running) {
+                    statusDiv.style.display = 'block';
+                    statusDiv.className = 'alert alert-warning';
+                    statusText.textContent = '自动执行已启用但未运行，请重启服务';
+                } else {
+                    statusDiv.style.display = 'none';
+                }
+            }
+        });
+}
+
+function toggleAutoExecution() {
+    const checkbox = document.getElementById('autoExecutionEnabled');
+    const enabled = checkbox.checked;
+    
+    fetch('/api/auto_execution', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: enabled })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert(data.message, 'success');
+                loadAutoExecutionStatus();
+            } else {
+                showAlert(data.message, 'danger');
+                checkbox.checked = !enabled; // 恢复状态
+            }
+        })
+        .catch(error => {
+            showAlert('设置失败: ' + error, 'danger');
+            checkbox.checked = !enabled; // 恢复状态
+        });
 }
 
 function saveSettings() {

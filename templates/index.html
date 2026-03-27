@@ -394,6 +394,26 @@
                 <div id="settings-page" class="page-content" style="display:none;">
                     <h2><i class="bi bi-gear"></i> 系统设置</h2>
                     
+                    <!-- 自动执行设置 -->
+                    <div class="card mt-3">
+                        <div class="card-header bg-primary text-white">
+                            <i class="bi bi-clock-history"></i> 自动执行设置
+                        </div>
+                        <div class="card-body">
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="autoExecutionEnabled" onchange="toggleAutoExecution()">
+                                <label class="form-check-label" for="autoExecutionEnabled">
+                                    <strong>启用自动执行</strong>
+                                </label>
+                                <div class="form-text">开启后系统将按照设定的时间间隔自动检查和处理邮件</div>
+                            </div>
+                            
+                            <div class="alert alert-info" id="autoExecutionStatus" style="display:none;">
+                                <i class="bi bi-info-circle"></i> <span id="autoExecutionText">自动执行运行中</span>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div class="card mt-3">
                         <div class="card-body">
                             <form id="settingsForm">

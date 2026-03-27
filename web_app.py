@@ -21,6 +21,7 @@ import sys
 import json
 import sqlite3
 import threading
+import time
 import logging
 from datetime import datetime
 from typing import Dict, Any, List
@@ -54,6 +55,11 @@ CONFIG_FILE = "config.json"
 DB_FILE = "execution_logs.db"
 processing_thread = None
 is_processing = False
+
+# 自动执行相关
+auto_execution_thread = None
+auto_execution_running = False
+auto_execution_stop_event = None
 
 # ============================================================================
 # 数据库操作
@@ -818,6 +824,109 @@ def delete_kb_file(filename):
 
 
 # ============================================================================
+# 自动执行相关API
+# ============================================================================
+
+
+@app.route("/api/auto_execution", methods=["GET"])
+def get_auto_execution_status():
+    """获取自动执行状态"""
+    try:
+        config = load_config()
+        settings = config.get("settings", {})
+
+        return jsonify(
+            {
+                "success": True,
+                "enabled": settings.get("auto_execution", False),
+                "interval": settings.get("check_interval", 60),
+                "running": auto_execution_running,
+            }
+        )
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/api/auto_execution", methods=["POST"])
+def toggle_auto_execution():
+    """开启/关闭自动执行"""
+    global auto_execution_running, auto_execution_thread, auto_execution_stop_event
+
+    try:
+        data = request.json or {}
+        enabled = data.get("enabled", False)
+
+        config = load_config()
+        config["settings"]["auto_execution"] = enabled
+        save_config(config)
+
+        if enabled:
+            if not auto_execution_running:
+                # 启动自动执行线程
+                auto_execution_stop_event = threading.Event()
+                auto_execution_thread = threading.Thread(
+                    target=auto_execution_worker,
+                    args=(auto_execution_stop_event,),
+                    daemon=True,
+                )
+                auto_execution_thread.start()
+                auto_execution_running = True
+                logger.info("自动执行已启动")
+                return jsonify({"success": True, "message": "自动执行已启动"})
+        else:
+            if auto_execution_running and auto_execution_stop_event:
+                # 停止自动执行
+                auto_execution_stop_event.set()
+                auto_execution_running = False
+                logger.info("自动执行已停止")
+                return jsonify({"success": True, "message": "自动执行已停止"})
+
+        return jsonify({"success": True, "message": "设置已保存"})
+    except Exception as e:
+        logger.error(f"切换自动执行状态失败: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+def auto_execution_worker(stop_event):
+    """自动执行工作线程"""
+    logger.info("自动执行工作线程已启动")
+
+    while not stop_event.is_set():
+        try:
+            config = load_config()
+            settings = config.get("settings", {})
+
+            # 检查是否启用了自动执行
+            if not settings.get("auto_execution", False):
+                time.sleep(5)
+                continue
+
+            interval = settings.get("check_interval", 60)
+            dry_run = settings.get("dry_run", False)
+
+            # 执行邮件处理
+            assistant = OutlookAssistantCore(config, dry_run=dry_run)
+            result = assistant.process_once()
+
+            if result.get("status") == "success":
+                logger.info(f"自动执行完成: 处理{result.get('processed', 0)}封邮件")
+            else:
+                logger.error(f"自动执行失败: {result.get('message', '未知错误')}")
+
+            # 等待间隔时间（可被提前终止）
+            for _ in range(interval):
+                if stop_event.is_set():
+                    break
+                time.sleep(1)
+
+        except Exception as e:
+            logger.error(f"自动执行异常: {e}")
+            time.sleep(10)  # 出错后等待10秒再试
+
+    logger.info("自动执行工作线程已停止")
+
+
+# ============================================================================
 # 主程序
 # ============================================================================
 
@@ -835,5 +944,23 @@ if __name__ == "__main__":
     Path("templates").mkdir(exist_ok=True)
     Path("static/css").mkdir(parents=True, exist_ok=True)
     Path("static/js").mkdir(parents=True, exist_ok=True)
+
+    # 检查是否需要自动启动
+    try:
+        config = load_config()
+        settings = config.get("settings", {})
+        if settings.get("auto_execution", False):
+            # 启动自动执行
+            auto_execution_stop_event = threading.Event()
+            auto_execution_thread = threading.Thread(
+                target=auto_execution_worker,
+                args=(auto_execution_stop_event,),
+                daemon=True,
+            )
+            auto_execution_thread.start()
+            auto_execution_running = True
+            print("\n✅ 自动执行已启动")
+    except Exception as e:
+        print(f"\n⚠️ 自动执行启动失败: {e}")
 
     app.run(host="0.0.0.0", port=5000, debug=False)
