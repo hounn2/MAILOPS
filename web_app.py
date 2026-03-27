@@ -889,7 +889,17 @@ def toggle_auto_execution():
 
 def auto_execution_worker(stop_event):
     """自动执行工作线程"""
+    import pythoncom
+
     logger.info("自动执行工作线程已启动")
+
+    # 初始化COM（每个线程只需要初始化一次）
+    try:
+        pythoncom.CoInitialize()
+        logger.info("自动执行线程COM初始化成功")
+    except Exception as e:
+        logger.error(f"自动执行线程COM初始化失败: {e}")
+        return
 
     while not stop_event.is_set():
         try:
@@ -922,6 +932,13 @@ def auto_execution_worker(stop_event):
         except Exception as e:
             logger.error(f"自动执行异常: {e}")
             time.sleep(10)  # 出错后等待10秒再试
+
+    # 清理COM
+    try:
+        pythoncom.CoUninitialize()
+        logger.info("自动执行线程COM已清理")
+    except:
+        pass
 
     logger.info("自动执行工作线程已停止")
 
