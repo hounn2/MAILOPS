@@ -218,6 +218,7 @@
     "dry_run": false,
     "excluded_folders": ["已删除邮件", "草稿", "已发送邮件"],
     "mark_as_read_after_process": true,
-    "qa_database_path": "qa_database.json"
+    "qa_database_path": "qa_database.json",
+    "auto_execution": false
   }
 }

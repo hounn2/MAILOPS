@@ -686,6 +686,7 @@ function saveSettings() {
             config.settings.process_unread_only = document.getElementById('processUnreadOnly').checked;
             config.settings.max_emails_per_batch = parseInt(document.getElementById('maxEmailsPerBatch').value);
             config.settings.mark_as_read_after_process = document.getElementById('markAsRead').checked;
+            config.settings.auto_execution = document.getElementById('autoExecutionEnabled').checked;
             
             return fetch('/api/config', {
                 method: 'POST',
